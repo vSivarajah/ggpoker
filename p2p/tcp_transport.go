@@ -68,11 +68,12 @@ func (t *TCPTransport) ListenAndAccept() error {
 			logrus.Error(err)
 			continue
 		}
+
 		peer := &Peer{
 			conn: conn,
 		}
-		t.AddPeer <- peer
 
+		t.AddPeer <- peer
 	}
 
 	return fmt.Errorf("TCP transport stopped reason: ?")
