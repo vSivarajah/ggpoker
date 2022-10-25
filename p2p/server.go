@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -50,7 +51,7 @@ func NewServer(cfg ServerConfig) *Server {
 	s := &Server{
 		ServerConfig: cfg,
 		peers:        make(map[net.Addr]*Peer),
-		addPeer:      make(chan *Peer),
+		addPeer:      make(chan *Peer, 100),
 		delPeer:      make(chan *Peer),
 		msgCh:        make(chan *Message),
 		gameState:    NewGameState(),
@@ -65,7 +66,6 @@ func NewServer(cfg ServerConfig) *Server {
 func (s *Server) Start() {
 	go s.loop()
 
-	fmt.Printf("game server running on port %s\n", s.ListenAddr)
 	logrus.WithFields(logrus.Fields{
 		"port":    s.ListenAddr,
 		"variant": s.GameVariant,
@@ -87,8 +87,6 @@ func (s *Server) sendPeerList(p *Peer) error {
 		it++
 	}
 	msg := NewMessage(s.ListenAddr, peerList)
-
-	// add
 	buf := new(bytes.Buffer)
 	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
 		return err
@@ -115,7 +113,8 @@ func (s *Server) SendHandshake(p *Peer) error {
 // TODO: Right now we have some redundant code in registering new peers to the game network.
 // maybe construct a new peer and handshake protocol after registering a plain connection?
 func (s *Server) Connect(addr string) error {
-	conn, err := net.Dial("tcp", addr)
+	fmt.Printf("dialing from %s to %s\n", s.ListenAddr, addr)
+	conn, err := net.DialTimeout("tcp", addr, 1*time.Second)
 	if err != nil {
 		return err
 	}
@@ -125,6 +124,8 @@ func (s *Server) Connect(addr string) error {
 		outbound: true,
 	}
 	s.addPeer <- peer
+
+	fmt.Printf("dialing from %s to %s sucessful \n", s.ListenAddr, addr)
 
 	return s.SendHandshake(peer)
 }
@@ -142,8 +143,6 @@ func (s *Server) loop() {
 			//if a new peer connects to the server, we send our handshake message and wait
 			// for his reply
 		case peer := <-s.addPeer:
-			s.SendHandshake(peer)
-
 			if err := s.handshake(peer); err != nil {
 				logrus.Errorf("%s: handshake with incoming player failed: %s", s.ListenAddr, err)
 				peer.conn.Close()
@@ -207,15 +206,28 @@ func (s *Server) handshake(p *Peer) error {
 }
 
 func (s *Server) handleMessage(msg *Message) error {
+
 	logrus.WithFields(logrus.Fields{
 		"from": msg.From,
 	}).Info("received message")
 
 	switch v := msg.Payload.(type) {
-	case *MessagePeerList:
-		fmt.Printf("%+v\n", v)
+	case MessagePeerList:
+		return s.handlePeerList(v)
 	}
 
+	return nil
+}
+
+// TODO : maybe goroutine?
+func (s *Server) handlePeerList(l MessagePeerList) error {
+	fmt.Printf("peerlist => %+v\n", l)
+	for i := 0; i < len(l.Peers); i++ {
+		if err := s.Connect(l.Peers[i]); err != nil {
+			logrus.Errorf("failed to dial peer: ", err)
+			continue
+		}
+	}
 	return nil
 }
 
