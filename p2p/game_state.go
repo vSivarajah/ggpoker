@@ -1,24 +1,44 @@
 package p2p
 
-type Round uint32
+type GameStatus uint32
 
-const (
-	Dealing Round = iota
-	PreFlop
-	Flop
-	Turn
-	River
-)
-
-type GameState struct {
-	isDealer bool //atomic accessible
-	Round uint32 //atomic accessible
-}
-
-func NewGameState() *GameState {
-	return &GameState{
+func (g GameStatus) String() string {
+	switch g {
+	case GameStatusWaiting:
+		return "WAITING"
+	case GameStatusDealing:
+		return "DEALING"
+	case GameStatusPreFlop:
+		return "PRE FLP"
+	case GameStatusFlop:
+		return "FLOP"
+	case GameStatusTurn:
+		return "TURN"
+	case GameStatusRiver:
+		return "RIVER"
+	default:
+		return "unknown"
 	}
 }
 
-func (g *GameState) loop() {
+const (
+	GameStatusWaiting GameStatus = iota
+	GameStatusDealing
+	GameStatusPreFlop
+	GameStatusFlop
+	GameStatusTurn
+	GameStatusRiver
+)
+
+type GameState struct {
+	isDealer   bool       // should be atomic accessable !
+	gameStatus GameStatus // should be atomic accessable !
+}
+
+func NewGameState() *GameState {
+	return &GameState{}
+}
+
+func (g *GameState) loop() {
+
 }

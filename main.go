@@ -33,11 +33,5 @@ func main() {
 	}
 
 	select {}
-	// rand.Seed(time.Now().UnixNano())
-	// for j := 0; j < 10; j++ {
-	// 	d := deck.New()
-	// 	fmt.Println(d)
-	// 	fmt.Println()
-	// }
 
 }
