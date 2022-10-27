@@ -6,54 +6,27 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/vsivarajah/ggpoker/deck"
-)
-
-type GameStatus int32
-
-func (g GameStatus) String() string {
-	switch g {
-	case GameStatusWaitingForCards:
-		return "WAITING FOR CARDS"
-	case GameStatusDealing:
-		return "DEALING"
-	case GameStatusPreFlop:
-		return "PRE FLP"
-	case GameStatusFlop:
-		return "FLOP"
-	case GameStatusTurn:
-		return "TURN"
-	case GameStatusRiver:
-		return "RIVER"
-	default:
-		return "unknown"
-	}
-}
-
-const (
-	GameStatusWaitingForCards GameStatus = iota
-	GameStatusDealing
-	GameStatusPreFlop
-	GameStatusFlop
-	GameStatusTurn
-	GameStatusRiver
 )
 
 type Player struct {
 	Status GameStatus
 }
+
 type GameState struct {
 	listenAddr  string
-	broadcastch chan any
+	broadcastch chan BroadcastTo
 	isDealer    bool // should be atomic accessable !
 	gameStatus  GameStatus
 
 	playersWaitingForCards int32
 	playersLock            sync.RWMutex
 	players                map[string]*Player
+
+	receivedDecksLock sync.RWMutex
+	receivedDecks     map[string]bool
 }
 
-func NewGameState(addr string, broadcastch chan any) *GameState {
+func NewGameState(addr string, broadcastch chan BroadcastTo) *GameState {
 	g := &GameState{
 		listenAddr:  addr,
 		broadcastch: broadcastch,
@@ -69,9 +42,12 @@ func NewGameState(addr string, broadcastch chan any) *GameState {
 
 // TODO: check other read and write occurences of the GameStatus!
 func (g *GameState) SetStatus(s GameStatus) {
-	atomic.StoreInt32((*int32)(&g.gameStatus), (int32)(s))
 
-	g.gameStatus = s
+	// only update the status when the status is different
+	if g.gameStatus != s {
+		atomic.StoreInt32((*int32)(&g.gameStatus), (int32)(s))
+	}
+
 }
 
 func (g *GameState) AddPlayerWaitingForCards() {
@@ -84,17 +60,55 @@ func (g *GameState) CheckNeedDealCards() {
 	if playersWaiting == int32(len(g.players)) &&
 		g.isDealer &&
 		g.gameStatus == GameStatusWaitingForCards {
+
 		logrus.WithFields(logrus.Fields{
 			"addr": g.listenAddr,
 		}).Info("need to deal cards")
 
-		g.DealCards()
+		g.InitiateShuffleAndDeal()
 	}
 }
 
-func (g *GameState) DealCards() {
+func (g *GameState) GetPlayersWithStatus(s GameStatus) []string {
+	players := []string{}
+	for addr := range g.players {
+		players = append(players, addr)
+	}
+	return players
+}
 
-	g.broadcastch <- MessageCards{Deck: deck.New()}
+func (g *GameState) ShuffleAndEncrypt(from string, deck [][]byte) error {
+	g.SetStatus(GameStatusReceivingCards)
+
+	// encryption and shuffle
+
+	// broadcast
+	return nil
+}
+
+// InitiateShuffleAndDeal is only used for the "real" dealer. The actual "button player"
+func (g *GameState) InitiateShuffleAndDeal() {
+	g.SetStatus(GameStatusReceivingCards)
+
+	// TODO: Shuffle and deal
+	//g.broadcastch <- MessageEncCards{Deck: [][]byte{}}
+	g.SendToPlayersWithStatus(MessageEncCards{Deck: [][]byte{}}, GameStatusWaitingForCards)
+}
+
+func (g *GameState) SendToPlayersWithStatus(payload any, s GameStatus) {
+	players := g.GetPlayersWithStatus(s)
+	g.broadcastch <- BroadcastTo{
+		To:      players,
+		Payload: payload,
+	}
+	logrus.WithFields(logrus.Fields{
+		"payload": payload,
+		"players": players,
+	}).Info("sending to players")
+}
+
+func (g *GameState) DealCards() {
+	//g.broadcastch <- MessageEncCards{Deck: deck.New()}
 }
 
 func (g *GameState) SetPlayerStatus(addr string, status GameStatus) {
@@ -140,6 +154,7 @@ func (g *GameState) loop() {
 		select {
 		case <-ticker.C:
 			logrus.WithFields(logrus.Fields{
+				"we":                g.listenAddr,
 				"players connected": g.LenPlayersConnectedWithLock(),
 				"status":            g.gameStatus,
 			}).Info()
