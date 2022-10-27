@@ -22,17 +22,18 @@ type GameState struct {
 	playersLock            sync.RWMutex
 	players                map[string]*Player
 
-	receivedDecksLock sync.RWMutex
-	receivedDecks     map[string]bool
+	decksReceivedLock sync.RWMutex
+	decksReceived     map[string]bool
 }
 
 func NewGameState(addr string, broadcastch chan BroadcastTo) *GameState {
 	g := &GameState{
-		listenAddr:  addr,
-		broadcastch: broadcastch,
-		isDealer:    false,
-		gameStatus:  GameStatusWaitingForCards,
-		players:     make(map[string]*Player),
+		listenAddr:    addr,
+		broadcastch:   broadcastch,
+		isDealer:      false,
+		gameStatus:    GameStatusWaitingForCards,
+		players:       make(map[string]*Player),
+		decksReceived: make(map[string]bool),
 	}
 
 	go g.loop()
@@ -77,12 +78,33 @@ func (g *GameState) GetPlayersWithStatus(s GameStatus) []string {
 	return players
 }
 
+func (g *GameState) SetDecksReceived(from string) {
+
+	g.decksReceivedLock.Lock()
+	g.decksReceived[from] = true
+	g.decksReceivedLock.Unlock()
+}
+
 func (g *GameState) ShuffleAndEncrypt(from string, deck [][]byte) error {
-	g.SetStatus(GameStatusReceivingCards)
 
 	// encryption and shuffle
+	g.SetDecksReceived(from)
+	g.SendToPlayersWithStatus(MessageEncDeck{Deck: [][]byte{}}, GameStatusReceivingCards)
 
-	// broadcast
+	players := g.GetPlayersWithStatus(GameStatusReceivingCards)
+
+	g.decksReceivedLock.RLock()
+	for _, addr := range players {
+		_, ok := g.decksReceived[addr]
+		if !ok {
+			return nil
+		}
+	}
+	g.decksReceivedLock.RUnlock()
+
+	// in this case we received all the shuffled cards from all players
+
+	g.SetStatus(GameStatusPreFlop)
 	return nil
 }
 
@@ -92,7 +114,7 @@ func (g *GameState) InitiateShuffleAndDeal() {
 
 	// TODO: Shuffle and deal
 	//g.broadcastch <- MessageEncCards{Deck: [][]byte{}}
-	g.SendToPlayersWithStatus(MessageEncCards{Deck: [][]byte{}}, GameStatusWaitingForCards)
+	g.SendToPlayersWithStatus(MessageEncDeck{Deck: [][]byte{}}, GameStatusWaitingForCards)
 }
 
 func (g *GameState) SendToPlayersWithStatus(payload any, s GameStatus) {
@@ -157,6 +179,7 @@ func (g *GameState) loop() {
 				"we":                g.listenAddr,
 				"players connected": g.LenPlayersConnectedWithLock(),
 				"status":            g.gameStatus,
+				"decksReceived":     g.decksReceived,
 			}).Info()
 		default:
 		}

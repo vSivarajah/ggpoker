@@ -28,6 +28,6 @@ type MessagePeerList struct {
 	Peers []string
 }
 
-type MessageEncCards struct {
+type MessageEncDeck struct {
 	Deck [][]byte
 }

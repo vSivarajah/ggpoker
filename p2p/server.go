@@ -312,11 +312,12 @@ func (s *Server) handleMessage(msg *Message) error {
 	switch v := msg.Payload.(type) {
 	case MessagePeerList:
 		return s.handlePeerList(v)
-	case MessageEncCards:
+	case MessageEncDeck:
 		logrus.WithFields(logrus.Fields{
 			"we":   s.ListenAddr,
 			"from": msg.From,
 		}).Info("recived enc deck")
+		s.gameState.SetStatus(GameStatusReceivingCards)
 
 		s.gameState.ShuffleAndEncrypt(msg.From, v.Deck)
 	}
@@ -338,5 +339,5 @@ func (s *Server) handlePeerList(l MessagePeerList) error {
 
 func init() {
 	gob.Register(MessagePeerList{})
-	gob.Register(MessageEncCards{})
+	gob.Register(MessageEncDeck{})
 }
