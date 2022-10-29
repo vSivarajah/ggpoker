@@ -89,7 +89,6 @@ func (g *GameState) ShuffleAndEncrypt(from string, deck [][]byte) error {
 
 	// encryption and shuffle
 	g.SetDecksReceived(from)
-	g.SendToPlayersWithStatus(MessageEncDeck{Deck: [][]byte{}}, GameStatusReceivingCards)
 
 	players := g.GetPlayersWithStatus(GameStatusReceivingCards)
 
@@ -105,6 +104,9 @@ func (g *GameState) ShuffleAndEncrypt(from string, deck [][]byte) error {
 	// in this case we received all the shuffled cards from all players
 
 	g.SetStatus(GameStatusPreFlop)
+
+	g.SendToPlayersWithStatus(MessageEncDeck{Deck: [][]byte{}}, GameStatusReceivingCards)
+
 	return nil
 }
 
