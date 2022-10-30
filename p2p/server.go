@@ -201,9 +201,12 @@ func (s *Server) loop() {
 				logrus.Errorf("handle peer error %s", err)
 			}
 		case msg := <-s.msgCh:
-			if err := s.handleMessage(msg); err != nil {
-				panic(err)
-			}
+			go func() {
+				if err := s.handleMessage(msg); err != nil {
+					logrus.Errorf("handle msg error: %s", err)
+				}
+			}()
+
 		}
 	}
 }
@@ -313,20 +316,28 @@ func (s *Server) handleMessage(msg *Message) error {
 	case MessagePeerList:
 		return s.handlePeerList(v)
 	case MessageEncDeck:
-		logrus.WithFields(logrus.Fields{
-			"we":   s.ListenAddr,
-			"from": msg.From,
-		}).Info("recived enc deck")
-		s.gameState.SetStatus(GameStatusReceivingCards)
-
-		s.gameState.ShuffleAndEncrypt(msg.From, v.Deck)
+		return s.handleEncDeck(msg.From, v)
 	}
 
 	return nil
 }
 
+func (s *Server) handleEncDeck(from string, msg MessageEncDeck) error {
+	logrus.WithFields(logrus.Fields{
+		"we":   s.ListenAddr,
+		"from": from,
+	}).Info("recived enc deck")
+
+	return s.gameState.ShuffleAndEncrypt(from, msg.Deck)
+}
+
 // TODO : maybe goroutine?
 func (s *Server) handlePeerList(l MessagePeerList) error {
+
+	logrus.WithFields(logrus.Fields{
+		"we":   s.ListenAddr,
+		"list": l.Peers,
+	}) //.Info("received peerlist message")
 
 	for i := 0; i < len(l.Peers); i++ {
 		if err := s.Connect(l.Peers[i]); err != nil {
